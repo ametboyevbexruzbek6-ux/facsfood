@@ -1,0 +1,4 @@
+node_modules/
+kafe.db
+public/uploads/*
+!public/uploads/.gitkeep
