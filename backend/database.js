@@ -1,54 +1,67 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const { Pool } = require('pg');
+require('dotenv').config();
 
-const dbPath = path.resolve(__dirname, 'kafe.db');
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Baza ulanishida xatolik:', err.message);
-    } else {
-        console.log('SQLite bazasiga ulanish muvaffaqiyatli.');
-    }
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false // Often required for managed DBs like Supabase
+  }
+});
+
+pool.connect((err) => {
+  if (err) {
+    console.error('Baza ulanishida xatolik (Supabase):', err.message);
+  } else {
+    console.log('Supabase (PostgreSQL) bazasiga ulanish muvaffaqiyatli.');
+  }
 });
 
 // Jadvallarni yaratish
-db.serialize(() => {
-    db.run(`
-        CREATE TABLE IF NOT EXISTS Products (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            description TEXT,
-            price INTEGER NOT NULL,
-            image TEXT,
-            status TEXT DEFAULT 'Mavjud',
-            isTop BOOLEAN DEFAULT 0
-        )
-    `);
+const initDb = async () => {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS Products (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                price INTEGER NOT NULL,
+                image TEXT,
+                status TEXT DEFAULT 'Mavjud',
+                "isTop" BOOLEAN DEFAULT false
+            );
+        `);
 
-    db.run(`
-        CREATE TABLE IF NOT EXISTS Orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            customerName TEXT NOT NULL,
-            phone TEXT NOT NULL,
-            deliveryType TEXT NOT NULL,
-            address TEXT,
-            paymentType TEXT NOT NULL,
-            totalAmount INTEGER NOT NULL,
-            status TEXT DEFAULT 'Kutilmoqda',
-            createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS Orders (
+                id SERIAL PRIMARY KEY,
+                "customerName" TEXT NOT NULL,
+                phone TEXT NOT NULL,
+                "deliveryType" TEXT NOT NULL,
+                address TEXT,
+                "paymentType" TEXT NOT NULL,
+                "totalAmount" INTEGER NOT NULL,
+                status TEXT DEFAULT 'Kutilmoqda',
+                "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
 
-    db.run(`
-        CREATE TABLE IF NOT EXISTS OrderItems (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            orderId INTEGER,
-            productId INTEGER,
-            quantity INTEGER NOT NULL,
-            price INTEGER NOT NULL,
-            FOREIGN KEY(orderId) REFERENCES Orders(id),
-            FOREIGN KEY(productId) REFERENCES Products(id)
-        )
-    `);
-});
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS OrderItems (
+                id SERIAL PRIMARY KEY,
+                "orderId" INTEGER REFERENCES Orders(id),
+                "productId" INTEGER REFERENCES Products(id),
+                quantity INTEGER NOT NULL,
+                price INTEGER NOT NULL
+            );
+        `);
+        console.log('Jadvallar muvaffaqiyatli tekshirildi/yaratildi.');
+    } catch (err) {
+        console.error('Jadvallarni yaratishda xatolik:', err.message);
+    }
+};
 
-module.exports = db;
+initDb();
+
+module.exports = {
+    query: (text, params) => pool.query(text, params)
+};
